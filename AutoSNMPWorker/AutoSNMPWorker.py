@@ -131,7 +131,6 @@ def EmailNotification(header , body , receiver_emails):
 def GetDateTimeType(strTime):
     # Create datetime object
     d = parse(strTime)
-    print(d)
     #d = datetime.datetime.strptime(strTime, "%Y-%m-%dT%H:%M:%S.%f")
     return d
 
@@ -144,13 +143,10 @@ def GetLocalTimeZone(d):
     # Tell the datetime object that it's in UTC time zone since 
     # datetime objects are 'naive' by default
     d = d.replace(tzinfo=to_zone)
-    print(d)
 
     # Convert time zone
     central = d.astimezone(to_zone)
     nownew = GetNowLocalTimeZone()
-    print(d)
-    print(nownew)
 
     # Get the Result
     return central
@@ -159,7 +155,6 @@ def GetNowLocalTimeZone():
     d = datetime.datetime.now()
     timezone = pytz.timezone(TIMEZONE)
     d_aware = timezone.localize(d)
-    print(d_aware.tzinfo)
     return d_aware
 
 ################################################### Main ###################################################
@@ -197,7 +192,9 @@ for item in Interface_list:
                     #Check it still mute ?
                     timeSpan = ( muteDateUntill - nowDate).total_seconds()
                     if(timeSpan > 0): # not muted, Go
-                        break
+                        # Update new Status without notify
+                        t = UpdateInterface(WebAPI_url , item )
+                        continue
                 if(item['eventEnable']):
                     dateTimeFlapBound = parse(item['eventFlapStartTime']) + datetime.timedelta(minutes=item['eventTriggerInterval'])
                     dateTimeFlapBound = GetLocalTimeZone(dateTimeFlapBound)
@@ -212,12 +209,13 @@ for item in Interface_list:
                         LineNotification(bodyMessage, item['lineToken'])
                         EmailNotification("Interface Status Change" , bodyMessage , item['email'])
                     else:
-                        break
+                        # Update new Status without notify
+                        t = UpdateInterface(WebAPI_url , item )
+                        continue
                 else:
                     #send notification 
                     LineNotification(bodyMessage, item['lineToken'])
                     EmailNotification("Interface Status Change" , bodyMessage ,item['email'])
-
-
-        t = UpdateInterface(WebAPI_url , item )
+    print('Ge to end')
+    t = UpdateInterface(WebAPI_url , item )
 
