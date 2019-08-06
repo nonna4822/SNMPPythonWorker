@@ -22,30 +22,29 @@ from email.mime.text import MIMEText
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Variable Information -- for -- SNMP , WebAPI , Line
-WebAPI_url = 'https://localhost:44355/api/Interfaces'
-Line_url = 'https://notify-api.line.me/api/notify'
-SNMP_url = '202.47.253.51'
-oid_int_status = "1.3.6.1.2.1.2.2.1.8"
-community = "thix-iig"
-
-# Variable Information -- for -- Email
-sender_email = "nonhahere.4822@gmail.com"
-sender_email_hotmail = "elesrubsoap_4822@hotmail.com"
-receiver_email = "Narawit.Development@gmail.com"
-receiver_email_hotmail = "elesrubsoap_4822@hotmail.com"
-password = "narawit4822!"
-
-#TIMEZONE = "Asia/Bangkok"
+# Variable Information 
+WEBAPI_URL = 'https://localhost:44355/api/Interfaces'
 TIMEZONE = "Etc/GMT+7"
 
+class snmpSetting:
+    oid_int_status = "1.3.6.1.2.1.2.2.1.8"
+    community = "thix-iig"
+
+class emailSetting:
+    senderEmail =  "nonhahere.4822@gmail.com"
+    senderEmailPassword = "narawit4822!"
+    emailServer = "smtp.gmail.com"
+    emailServerPort = 465
+
+class lineSetting:
+    Line_url = 'https://notify-api.line.me/api/notify'
 
 #SNMP Function
-def snmp_get(oid):
+def snmp_get(oid, hostip):
     errorIndication, errorStatus, errorIndex, varBinds = next(
         getCmd(SnmpEngine(),
-               CommunityData(community, mpModel=0),
-               UdpTransportTarget((SNMP_url, 161)),
+               CommunityData(snmpSetting.community, mpModel=0),
+               UdpTransportTarget((hostip, 161)),
                ContextData(),
                ObjectType(ObjectIdentity(oid)))
     )
@@ -94,42 +93,43 @@ def LineNotification(msg, token):
     if(token == None):
         return 
 
-    Line_url = 'https://notify-api.line.me/api/notify'
     Line_headers = {'content-type':'application/x-www-form-urlencoded','Authorization':'Bearer '+token}
 
     try:
-        response = requests.post(Line_url ,headers=Line_headers ,data = {'message':msg}) #solve by verify --> False
+        response = requests.post(lineSetting.Line_url ,headers=Line_headers ,data = {'message':msg}) #solve by verify --> False
         return response
     # If the response was successful, no Exception will be raised
     except HTTPError as http_err:
         print(f'HTTP error occurred: {http_err}')  # Python 3.6
     except Exception as err:
         print(f'Other error occurred: {err}')  # Python 3.6
+    
 
 ## Email Sending
-# Create a secure SSL Context
 def EmailNotification(header , body , receiver_emails):
     if(receiver_emails == None):
         return 
-    port_gmail = 465 # for SSL gmail
     context = ssl.create_default_context()
 
     # Create a multipart message and set headers
     message = MIMEMultipart()
-    message["From"] = sender_email
+    message["From"] = emailSetting.senderEmail
     message["Subject"] = header
     message["To"] = receiver_emails
 
     message.attach(MIMEText(body,"plain"))
 
+    # Get Receiver email
     receiver_emails = receiver_emails.split(",")
     print(receiver_emails)
 
     for receiver_email in receiver_emails:
         text = message.as_string()
-        with smtplib.SMTP_SSL("smtp.gmail.com",port_gmail , context=context) as server:
-            server.login(sender_email,password)
-            server.sendmail(sender_email , receiver_email , text)
+        with smtplib.SMTP_SSL(emailSetting.emailServer,emailSetting.emailServerPort , context=context) as server:
+            server.login(emailSetting.senderEmail,emailSetting.senderEmailPassword)
+            server.sendmail(emailSetting.senderEmail , receiver_email , text)
+
+
 
 def GetDateTimeType(strTime):
     # Create datetime object
@@ -163,7 +163,7 @@ def GetNowLocalTimeZone():
 ################################################### Main ###################################################
 
 # Get - Interface - List 
-Interface_list = GetInterfaceList(WebAPI_url);
+Interface_list = GetInterfaceList(WEBAPI_URL);
 
 # Discover And Notify when Status has changes.
 for item in Interface_list:
@@ -175,8 +175,8 @@ for item in Interface_list:
     #diffTest = (eventFlapStartTime - GetNowLocalTimeZone() ).total_seconds()
 
     # SNMP Query
-    interfaceIndex = oid_int_status + "." + item['index']
-    newItemStatus = snmp_get(interfaceIndex)
+    interfaceIndex = snmpSetting.oid_int_status + "." + item['index']
+    newItemStatus = snmp_get(interfaceIndex, item['hostIP'])
 
     # Compare Old Interface Status in db and New-Status
     if(newItemStatus != item['lastStatus']):
@@ -202,7 +202,7 @@ for item in Interface_list:
                     timeSpan = ( muteDateUntill - nowDate).total_seconds()
                     if(timeSpan > 0): # not muted, Go
                         # Update new Status without notify
-                        t = UpdateInterface(WebAPI_url , item )
+                        t = UpdateInterface(WEBAPI_URL , item )
                         print('Interface has changes but it\'s not notify ( Muted )')
                         continue
                 if(item['eventEnable']):
@@ -225,12 +225,12 @@ for item in Interface_list:
                     else:
                         print("Flapping Count is over the maximum, Max: " + str(item['eventFlapMax']) + " Count: " + str(item['eventFlapCount']))
                         # Update new Status without notify
-                        t = UpdateInterface(WebAPI_url , item )
+                        t = UpdateInterface(WEBAPI_URL , item )
                         continue
                 else:
                     print('Event Trigger isn\'t enable')
                     #send notification 
                     LineNotification(lineBodyMessage, item['lineToken'])
                     EmailNotification(headerMessage , emailBodyMessage ,item['email'])
-    t = UpdateInterface(WebAPI_url , item )
+    t = UpdateInterface(WEBAPI_URL , item )
 
