@@ -198,17 +198,20 @@ for item in Interface_list:
                 if(item['eventEnable']):
                     dateTimeFlapBound = parse(item['eventFlapStartTime']) + datetime.timedelta(minutes=item['eventTriggerInterval'])
                     dateTimeFlapBound = GetLocalTimeZone(dateTimeFlapBound)
+                    print("datetime flap bound: "+str(dateTimeFlapBound))
                             
-                    if( (dateTimeFlapBound - nowDate).total_seconds() > 0):
-                        item['eventFlapStartTime'] = nowDate
+                    if( (dateTimeFlapBound - nowDate).total_seconds() < 0):# so long occur 
+                        item['eventFlapStartTime'] = nowDate.strftime("%Y-%m-%dT%H:%M:%S")
                         item['eventFlapCount'] = 1
-                    else : 
-                        item['eventFlapCount'] = item['eventFlapCount'] + 1 
+                    else:  # occur in flap range
+                        item['eventFlapCount'] = item['eventFlapCount'] + 1
                     if( item['eventFlapCount'] < item['eventFlapMax']):
+                        print("Count: "+str(item['eventFlapCount']))
                         #send notification
                         LineNotification(bodyMessage, item['lineToken'])
                         EmailNotification("Interface Status Change" , bodyMessage , item['email'])
                     else:
+                        print("Count is over the maximum")
                         # Update new Status without notify
                         t = UpdateInterface(WebAPI_url , item )
                         continue
