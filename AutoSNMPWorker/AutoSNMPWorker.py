@@ -19,6 +19,9 @@ from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 # Variable Information -- for -- SNMP , WebAPI , Line
 WebAPI_url = 'https://localhost:44355/api/Interfaces'
 Line_url = 'https://notify-api.line.me/api/notify'
@@ -181,9 +184,15 @@ for item in Interface_list:
         ### provide notification message for sending to line, email
         lastStatusString = "Down" if item['lastStatus']==2 else "Up" 
         newItemStatusString = "Down" if newItemStatus ==2 else "Up"
-        bodyMessage = "\n" + item['hostName'] + "(" + item['hostIP'] + ") " + "\ninterface : " + item['name'] + "'s Status has Changed !" + "\nfrom " + lastStatusString + " to " + newItemStatusString + "\nTime : " + str(datetime.datetime.now())
 
-        ### update new status
+
+        
+        headerMessage = "NOAH " + item['hostName'] + " " + item['name'] + " Status " +lastStatusString + " -> " + newItemStatusString
+        
+        emailBodyMessage = "\nEquipment:\t\t" + item['hostName'] + "\nIP Address:\t\t" + item['hostIP'] + "\nInterface:\t\t" + item['name'] + "\nCurrent Status:\t" + newItemStatusString + "\nTime:\t\t\t" + str(datetime.datetime.now())
+        lineBodyMessage = "\n" + item['hostName'] + "\nInterface: " + item['name'] + "\nStatus: " + lastStatusString + " -> " + newItemStatusString
+
+        ### update new status but not to DB
         item['lastStatus'] = newItemStatus
 
         if(item['email'] != None or item['lineGroup'] != None):
@@ -194,31 +203,34 @@ for item in Interface_list:
                     if(timeSpan > 0): # not muted, Go
                         # Update new Status without notify
                         t = UpdateInterface(WebAPI_url , item )
+                        print('Interface has changes but it\'s not notify ( Muted )')
                         continue
                 if(item['eventEnable']):
                     dateTimeFlapBound = parse(item['eventFlapStartTime']) + datetime.timedelta(minutes=item['eventTriggerInterval'])
                     dateTimeFlapBound = GetLocalTimeZone(dateTimeFlapBound)
-                    print("datetime flap bound: "+str(dateTimeFlapBound))
                             
                     if( (dateTimeFlapBound - nowDate).total_seconds() < 0):# so long occur 
+                        print('It\'s has been occur so far, for the last EventFlapStartTime: ' + item['eventFlapStartTime'])
                         item['eventFlapStartTime'] = nowDate.strftime("%Y-%m-%dT%H:%M:%S")
+                        print('then I will set new EventFlapStartTime to ' + item['eventFlapStartTime'])
                         item['eventFlapCount'] = 1
                     else:  # occur in flap range
+                        print('It\'s still can Flapping untill ' + str(dateTimeFlapBound))
                         item['eventFlapCount'] = item['eventFlapCount'] + 1
                     if( item['eventFlapCount'] < item['eventFlapMax']):
                         print("Count: "+str(item['eventFlapCount']))
                         #send notification
-                        LineNotification(bodyMessage, item['lineToken'])
-                        EmailNotification("Interface Status Change" , bodyMessage , item['email'])
+                        LineNotification(lineBodyMessage, item['lineToken'])
+                        EmailNotification(headerMessage , emailBodyMessage , item['email'])
                     else:
-                        print("Count is over the maximum")
+                        print("Flapping Count is over the maximum, Max: " + str(item['eventFlapMax']) + " Count: " + str(item['eventFlapCount']))
                         # Update new Status without notify
                         t = UpdateInterface(WebAPI_url , item )
                         continue
                 else:
+                    print('Event Trigger isn\'t enable')
                     #send notification 
-                    LineNotification(bodyMessage, item['lineToken'])
-                    EmailNotification("Interface Status Change" , bodyMessage ,item['email'])
-    print('Ge to end')
+                    LineNotification(lineBodyMessage, item['lineToken'])
+                    EmailNotification(headerMessage , emailBodyMessage ,item['email'])
     t = UpdateInterface(WebAPI_url , item )
 
